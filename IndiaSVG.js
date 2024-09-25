@@ -118,6 +118,7 @@ function loadStations() {
                         Dominant Pollutant: ${dominantPollutant}<br>
                         <b>Description:</b> ${description}<br>
                         <b>Last Update:</b> ${lastUpdateTime}
+                        <a href="/IIT-Kharagpur-hackathon/detailed_view.html?station=${encodeURIComponent(station.station)}" target="_blank">more details</a>
                     `);
 
                     currentMarkers.push(marker);
