@@ -1,4 +1,8 @@
-const apiKey = '9d122bd095a3cc305998a662e6830c6f6ad9b6d2';
+const apiKey = '9d122bd095a3cc305998a662e6830c6f6ad9b6d2';  // AQI API Key
+const geminiApiKey = 'geminiApiKey';  // Replace with actual Gemini API Key
+const squareApiKey = 'fsq3kFsQIenM+NSVeh6FjQhMD2lhri4lMwzrTUHYHWW/1Xc'; // Foursquare API Key
+const radius = 5000; // 5 km radius for Foursquare
+
 let map;
 let currentMarkers = [];
 
@@ -76,55 +80,75 @@ function loadStations() {
 
     clearMarkers();
 
-    // Add markers for the stations in the city
+    // Add markers for the stations in the city and fetch data
     cityStations.forEach(station => {
-        const url = `https://api.waqi.info/feed/geo:${station.latitude};${station.longitude}/?token=${apiKey}`;
+        const aqiUrl = `https://api.waqi.info/feed/geo:${station.latitude};${station.longitude}/?token=${apiKey}`;
+        const geminiUrl = `https://geminiapi.example.com/suggestions?lat=${station.latitude}&lon=${station.longitude}&key=${geminiApiKey}`;
+        const foursquareUrl = `https://api.foursquare.com/v3/places/nearby?ll=${station.latitude},${station.longitude}&radius=${radius}&categories=13065,13029,17069`;
 
-        fetch(url)
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'ok') {
-                    const aqi = data.data.aqi;
-                    const pollutants = {
-                        pm25: data.data.iaqi.pm25?.v || 'N/A',
-                        pm10: data.data.iaqi.pm10?.v || 'N/A',
-                        co: data.data.iaqi.co?.v || 'N/A',
-                        so2: data.data.iaqi.so2?.v || 'N/A',
-                        no2: data.data.iaqi.no2?.v || 'N/A',
-                        o3: data.data.iaqi.o3?.v || 'N/A'
-                    };
-                    const dominantPollutant = data.data.dominentpol || 'Unknown';
-                    const lastUpdateTime = data.data.time?.s || 'Unknown';
-                    const description = getDetailedAQIDescription(aqi);
+        // Fetch data from AQI, Gemini, and Foursquare APIs
+        Promise.all([
+            fetch(aqiUrl).then(response => response.json()),
+            fetch(geminiUrl).then(response => response.json()),
+            fetch(foursquareUrl, { headers: { 'Authorization': squareApiKey }}).then(response => response.json())
+        ])
+        .then(([aqiData, geminiData, foursquareData]) => {
+            if (aqiData.status === 'ok') {
+                const aqi = aqiData.data.aqi;
+                const pollutants = {
+                    pm25: aqiData.data.iaqi.pm25?.v || 'N/A',
+                    pm10: aqiData.data.iaqi.pm10?.v || 'N/A',
+                    co: aqiData.data.iaqi.co?.v || 'N/A',
+                    so2: aqiData.data.iaqi.so2?.v || 'N/A',
+                    no2: aqiData.data.iaqi.no2?.v || 'N/A',
+                    o3: aqiData.data.iaqi.o3?.v || 'N/A'
+                };
+                const dominantPollutant = aqiData.data.dominentpol || 'Unknown';
+                const lastUpdateTime = aqiData.data.time?.s || 'Unknown';
+                const description = getDetailedAQIDescription(aqi);
+                
+                // Gemini suggestions
+                const geminiSuggestions = geminiData.suggestions || 'No suggestions available';
 
-                    const marker = L.circleMarker([station.latitude, station.longitude], {
-                        radius: 8,
-                        fillColor: getAQIColor(aqi),
-                        color: getAQIColor(aqi),
-                        weight: 1,
-                        fillOpacity: 0.8
-                    }).addTo(map);
+                // Extract nearby places from Foursquare data
+                const nearbyPlaces = foursquareData.results.map(result => ({
+                    name: result.name,
+                    category: result.categories[0].name || 'Unknown',
+                    distance: result.distance
+                }));
 
-                    marker.bindPopup(`
-                        <b>Station: ${station.station}</b><br>
-                        AQI: ${aqi}<br>
-                        <b>Pollutants:</b><br>
-                        PM2.5: ${pollutants.pm25} µg/m³<br>
-                        PM10: ${pollutants.pm10} µg/m³<br>
-                        CO: ${pollutants.co} ppm<br>
-                        SO2: ${pollutants.so2} ppb<br>
-                        NO2: ${pollutants.no2} ppb<br>
-                        O3: ${pollutants.o3} ppb<br>
-                        Dominant Pollutant: ${dominantPollutant}<br>
-                        <b>Description:</b> ${description}<br>
-                        <b>Last Update:</b> ${lastUpdateTime}
-                        <a href="/IIT-Kharagpur-hackathon/detailed_view.html?station=${encodeURIComponent(station.station)}" target="_blank">more details</a>
-                    `);
+                const marker = L.circleMarker([station.latitude, station.longitude], {
+                    radius: 8,
+                    fillColor: getAQIColor(aqi),
+                    color: getAQIColor(aqi),
+                    weight: 1,
+                    fillOpacity: 0.8
+                }).addTo(map);
 
-                    currentMarkers.push(marker);
-                }
-            })
-            .catch(error => console.error('Error fetching AQI:', error));
+                // Bind popup showing AQI data, Gemini suggestions, and nearby places
+                marker.bindPopup(`
+                    <b>Station: ${station.station}</b><br>
+                    AQI: ${aqi}<br>
+                    <b>Pollutants:</b><br>
+                    PM2.5: ${pollutants.pm25} µg/m³<br>
+                    PM10: ${pollutants.pm10} µg/m³<br>
+                    CO: ${pollutants.co} ppm<br>
+                    SO2: ${pollutants.so2} ppb<br>
+                    NO2: ${pollutants.no2} ppb<br>
+                    O3: ${pollutants.o3} ppb<br>
+                    Dominant Pollutant: ${dominantPollutant}<br>
+                    <b>Description:</b> ${description}<br>
+                    <b>Last Update:</b> ${lastUpdateTime}<br>
+                    <b>Gemini Suggestions:</b> ${geminiSuggestions}<br>
+                    <b>Nearby Places:</b><br>
+                    ${nearbyPlaces.map(place => `${place.name} (${place.category}, ${place.distance}m)`).join('<br>')}
+                    <a href="/IIT-Kharagpur-hackathon/detailed_view.html?station=${encodeURIComponent(station.station)}" target="_blank">more details</a>
+                `);
+
+                currentMarkers.push(marker);
+            }
+        })
+        .catch(error => console.error('Error fetching data:', error));
     });
 }
 
